@@ -1973,9 +1973,6 @@
                 <var name="rho_p_save" type="real" dimensions="nVertLevels nCells Time" units="kg m^{-3}"
                      description="predicted value rho_p, saved before acoustic steps"/>
 
-                <var name="kdiff" type="real" dimensions="nVertLevels nCells Time" units="m^2 s^{-1}"
-                     description="Smagorinsky horizontal eddy viscosity"/>
-
                 <var name="eddy_visc_vert" type="real" dimensions="nVertLevels nCells Time" units="m^2 s^{-1}"
                      description="vertical eddy viscosity for les models"/>
 

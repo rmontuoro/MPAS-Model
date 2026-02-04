@@ -4820,7 +4820,7 @@ module atm_time_integration
       real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge, zgrid, rho_edge, rho_zz, ru, u, v, tend_u, &
                                                     divergence, vorticity, ke, pv_edge, theta_m, rw, tend_rho, &
                                                     rt_diabatic_tend, tend_theta, tend_w, w, cqw, rb, rr, pp, pressure_b, zz, zxu, cqu, & 
-                                                    h_divergence, kdiff, bn2, edgesOnCell_sign, edgesOnVertex_sign, rw_save, ru_save
+                                                    h_divergence, bn2, edgesOnCell_sign, edgesOnVertex_sign, rw_save, ru_save
 
       real (kind=RKIND), dimension(:,:), pointer :: eddy_visc_horz, eddy_visc_vert
 
@@ -4929,7 +4929,6 @@ module atm_time_integration
       call mpas_pool_get_array(diag, 'rho_p', rr)
       call mpas_pool_get_array(diag, 'rho_p_save', rr_save)
       call mpas_pool_get_array(diag, 'v', v)
-      call mpas_pool_get_array(diag, 'kdiff', kdiff)
       call mpas_pool_get_array(diag, 'eddy_visc_horz', eddy_visc_horz)
       call mpas_pool_get_array(diag, 'eddy_visc_vert', eddy_visc_vert)
       call mpas_pool_get_array(diag, 'bn2', bn2)
@@ -5060,7 +5059,7 @@ module atm_time_integration
          weightsOnEdge, zgrid, rho_edge, rho_zz, ru, u, v, tend_u, &
          divergence, vorticity, ke, pv_edge, theta_m, rw, tend_rho, &
          rt_diabatic_tend, tend_theta, tend_w, w, cqw, rb, rr, pp, pressure_b, zz, zxu, cqu, & 
-         h_divergence, kdiff, bn2, eddy_visc_horz, eddy_visc_vert, index_tke, &
+         h_divergence, bn2, eddy_visc_horz, eddy_visc_vert, index_tke, &
          edgesOnCell_sign, edgesOnVertex_sign, rw_save, ru_save, &
          theta_m_save, exner, rr_save, scalars, tend_u_euler, tend_w_euler, tend_theta_euler, deriv_two, &
          cellsOnEdge, verticesOnEdge, edgesOnCell, edgesOnEdge, cellsOnCell, edgesOnVertex, nEdgesOnCell, nEdgesOnEdge, &
@@ -5095,7 +5094,7 @@ module atm_time_integration
       weightsOnEdge, zgrid, rho_edge, rho_zz, ru, u, v, tend_u, &
       divergence, vorticity, ke, pv_edge, theta_m, rw, tend_rho, &
       rt_diabatic_tend, tend_theta, tend_w, w, cqw, rb, rr, pp, pressure_b, zz, zxu, cqu, & 
-      h_divergence, kdiff, bn2, eddy_visc_horz, eddy_visc_vert, index_tke, &
+      h_divergence, bn2, eddy_visc_horz, eddy_visc_vert, index_tke, &
       edgesOnCell_sign, edgesOnVertex_sign, rw_save, ru_save, &
       theta_m_save, exner, rr_save, scalars, tend_u_euler, tend_w_euler, tend_theta_euler, deriv_two, &
       cellsOnEdge, verticesOnEdge, edgesOnCell, edgesOnEdge, cellsOnCell, edgesOnVertex, nEdgesOnCell, nEdgesOnEdge, &
@@ -5164,7 +5163,6 @@ module atm_time_integration
       real (kind=RKIND), dimension(nVertLevels,nEdges+1) :: zxu
       real (kind=RKIND), dimension(nVertLevels,nEdges+1) :: cqu
       real (kind=RKIND), dimension(nVertLevels,nCells+1) :: h_divergence
-      real (kind=RKIND), dimension(nVertLevels,nCells+1) :: kdiff
       real (kind=RKIND), dimension(nVertLevels,nCells+1) :: eddy_visc_horz
       real (kind=RKIND), dimension(nVertLevels,nCells+1) :: eddy_visc_vert
       real (kind=RKIND), dimension(nVertLevels,nCells+1) :: bn2
@@ -5309,7 +5307,6 @@ module atm_time_integration
          !$acc enter data create(tend_theta_euler)
          !$acc enter data create(tend_rho)
 
-         !$acc enter data create(kdiff)
          !$acc enter data copyin(tend_rho_physics)
          !$acc enter data copyin(rb, rr_save)
          !$acc enter data copyin(divergence, vorticity)
@@ -5431,11 +5428,8 @@ module atm_time_integration
                do k = nVertLevels-config_number_cam_damping_levels + 1, nVertLevels
                   visc2cam = 4.0*2.0833*config_len_disp*config_mpas_cam_coef
                   visc2cam = visc2cam*(1.0-real(nVertLevels-k)/real(config_number_cam_damping_levels))
-                  kdiff(k  ,iCell) = max(kdiff(k  ,iCell),visc2cam)
+                  eddy_visc_horz(k,iCell) = max(eddy_visc_horz(k,iCell),visc2cam)
                end do
-               eddy_visc_horz(nVertLevels-2,iCell) = max(eddy_visc_horz(nVertLevels-2,iCell),    2.0833*config_len_disp*config_mpas_cam_coef)
-               eddy_visc_horz(nVertLevels-1,iCell) = max(eddy_visc_horz(nVertLevels-1,iCell),2.0*2.0833*config_len_disp*config_mpas_cam_coef)
-               eddy_visc_horz(nVertLevels  ,iCell) = max(eddy_visc_horz(nVertLevels  ,iCell),4.0*2.0833*config_len_disp*config_mpas_cam_coef)
             end do
             !$acc end parallel
 
@@ -5999,7 +5993,6 @@ module atm_time_integration
          !$acc exit data copyout(tend_theta_euler)
          !$acc exit data copyout(tend_rho)
 
-         !$acc exit data delete(kdiff)
          !$acc exit data delete(tend_rho_physics)
          !$acc exit data delete(rb, rr_save)
          !$acc exit data delete(divergence, vorticity)
