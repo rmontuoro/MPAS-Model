@@ -2034,7 +2034,6 @@ module init_atm_cases
       integer, dimension(:), pointer :: nEdgesOnEdge, nEdgesOnCell
       integer, dimension(:,:), pointer :: edgesOnEdge, cellsOnEdge, cellsOnCell
       real (kind=RKIND), dimension(:,:), pointer :: weightsOnEdge
-      real (kind=RKIND), pointer :: x_period, y_period
 
       integer :: iCell, iCell1, iCell2 , iEdge, ivtx, i, k, nz, itr, cell1, cell2, nz1
       integer, pointer :: nEdges, maxEdges, nCellsSolve, nVertices
@@ -2093,8 +2092,6 @@ module init_atm_cases
       call mpas_pool_get_array(mesh, 'kiteAreasOnVertex', kiteAreasOnVertex)
       call mpas_pool_get_array(mesh, 'nominalMinDc', nominalMinDc)
 
-      call mpas_pool_get_config(mesh, 'x_period', x_period)
-      call mpas_pool_get_config(mesh, 'y_period', y_period)
       call mpas_pool_get_config(mesh, 'on_a_sphere', on_a_sphere)
       call mpas_pool_get_config(mesh, 'sphere_radius', sphere_radius)
 
@@ -2136,8 +2133,6 @@ module init_atm_cases
       areaTriangle(:) = areaTriangle(:) * a_scale**2.0
       kiteAreasOnVertex(:,:) = kiteAreasOnVertex(:,:) * a_scale**2.0
       nominalMinDc = nominalMinDc * a_scale
-      x_period = x_period * a_scale
-      y_period = y_period * a_scale
 
       
       call mpas_pool_get_dimension(mesh, 'nEdges', nEdges)
