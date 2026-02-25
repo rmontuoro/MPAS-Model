@@ -63,12 +63,25 @@ contains
 
       DEBUG_WRITE(' begin smagorinsky_2d ')
 
+      !$acc enter data create(dudx, dudy, dvdx, dvdy)
+      !$acc enter data create(d_11, d_22, d_12)
+
+      !$acc parallel default(present)
+
+      !$acc loop gang worker private(dudx, dudy, dvdx, dvdy, d_11, d_22, d_12)
       do iCell = cellStart,cellEnd
-         dudx(1:nVertLevels) = 0.0
-         dudy(1:nVertLevels) = 0.0
-         dvdx(1:nVertLevels) = 0.0
-         dvdy(1:nVertLevels) = 0.0
+
+         !$acc loop vector
+         do k = 1, nVertLevels
+            dudx(k) = 0.0_RKIND
+            dudy(k) = 0.0_RKIND
+            dvdx(k) = 0.0_RKIND
+            dvdy(k) = 0.0_RKIND
+         end do
+
+         !$acc loop seq
          do iEdge=1,nEdgesOnCell(iCell)
+            !$acc loop vector
             do k=1,nVertLevels
                dudx(k) = dudx(k) + deformation_coef_c2(iEdge,iCell)*u(k,EdgesOnCell(iEdge,iCell)) &
                                  - deformation_coef_cs(iEdge,iCell)*v(k,EdgesOnCell(iEdge,iCell))
@@ -82,6 +95,7 @@ contains
          end do
 
 !DIR$ IVDEP
+         !$acc loop vector
          do k=1, nVertLevels
             ! here is the Smagorinsky formulation,
             ! followed by imposition of an upper bound on the eddy viscosity
@@ -92,6 +106,11 @@ contains
             kdiff(k,iCell) = min(kdiff(k,iCell),(0.01*config_len_disp**2) * invDt)
          end do
       end do
+
+      !$acc end parallel
+
+      !$acc exit data delete(dudx, dudy, dvdx, dvdy)
+      !$acc exit data delete(d_11, d_22, d_12)
 
       h_mom_eddy_visc4   = config_visc4_2dsmag * config_len_disp**3
       h_theta_eddy_visc4 = h_mom_eddy_visc4
@@ -165,6 +184,9 @@ contains
       DEBUG_WRITE(' les scheme is '//trim(config_les_model))
       DEBUG_WRITE(' les surface scheme is '//trim(config_les_surface))
 
+      !$acc enter data create(dudx, dudy, dvdx, dvdy, dwdx, dwdy, dudz, dvdz, dwdz)
+      !$acc enter data create(d_11, d_22, d_33, d_12, d_13, d_23)
+
       pr_inv = 1./prandtl
 
       ! set up coefficients for 4th-order horizontal background filter
@@ -172,25 +194,37 @@ contains
       h_mom_eddy_visc4   = config_visc4_2dsmag * config_len_disp**3
       h_theta_eddy_visc4 = h_mom_eddy_visc4
 
+      !$acc parallel default(present)
+
+      !$acc loop gang worker private(dudx, dudy, dvdx, dvdy, dwdx, dwdy, dudz, dvdz, dwdz, d_11, d_22, d_33, d_12, d_13, d_23)
       do iCell = cellStart,cellEnd
 
-         dudx(1:nVertLevels) = 0.0
-         dudy(1:nVertLevels) = 0.0
-         dvdx(1:nVertLevels) = 0.0
-         dvdy(1:nVertLevels) = 0.0
-         dwdx(1:nVertLevels+1) = 0.0
-         dwdy(1:nVertLevels+1) = 0.0
+         !$acc loop vector
+         do k = 1, nVertLevels
+            dudx(k) = 0.0_RKIND
+            dudy(k) = 0.0_RKIND
+            dvdx(k) = 0.0_RKIND
+            dvdy(k) = 0.0_RKIND
 
-         dudz(1:nVertLevels) = 0.0
-         dvdz(1:nVertLevels) = 0.0
-         dwdz(1:nVertLevels) = 0.0
+            dudz(k) = 0.0_RKIND
+            dvdz(k) = 0.0_RKIND
+            dwdz(k) = 0.0_RKIND
+         end do
 
+         !$acc loop vector
+         do k = 1, nVertLevels+1
+            dwdx(k) = 0.0_RKIND
+            dwdy(k) = 0.0_RKIND
+         end do
+
+         !$acc loop seq
          do iEdge=1,nEdgesOnCell(iCell)
 
             ie = EdgesOnCell(iEdge,iCell)
             cell1 = cellsOnEdge(1,ie)
             cell2 = cellsOnEdge(2,ie)
 
+            !$acc loop vector
             do k=1,nVertLevels
                dudx(k) = dudx(k) + deformation_coef_c2(iEdge,iCell)*u(k,ie) &
                                  - deformation_coef_cs(iEdge,iCell)*v(k,ie)
@@ -202,6 +236,7 @@ contains
                                  + deformation_coef_cs(iEdge,iCell)*v(k,ie)
             end do
 
+            !$acc loop vector
             do k=1,nVertLevels+1
                wk = 0.5*(w(k,cell1)+w(k,cell2))
                dwdx(k) = dwdx(k) + deformation_coef_c(iEdge,iCell)*wk
@@ -210,11 +245,13 @@ contains
 
          end do
 
+         !$acc loop vector
          do k=1,nVertLevels
             rdz = 1./(zgrid(k+1,iCell)-zgrid(k,iCell))
             dwdz(k) = (w(k+1,iCell)-w(k,iCell))*rdz
          end do
 
+         !$acc loop vector
          do k=2,nVertLevels-1
             rdz = 1./(zgrid(k+2,iCell)+zgrid(k+1,iCell)-zgrid(k,iCell)-zgrid(k-1,iCell))
             dudz(k) = (uCell(k+1,iCell)-uCell(k-1,iCell))*rdz
@@ -231,6 +268,7 @@ contains
          dudz(k+1) = (uCell(k+1,iCell)-uCell(k,iCell))*rdz
          dvdz(k+1) = (vCell(k+1,iCell)-vCell(k,iCell))*rdz
  
+         !$acc loop vector
          do k=1, nVertLevels
             d_11(k) = 2.*dudx(k)
             d_22(k) = 2.*dvdy(k)
@@ -242,6 +280,7 @@ contains
 
          if (config_les_model == "3d_smagorinsky") then
 
+            !$acc loop vector
             do k=1, nVertLevels
                def2 = 0.5*(d_11(k)**2 + d_22(k)**2 + d_33(k)**2) + d_12(k)**2 + d_13(k)**2 + d_23(k)**2
                eddy_visc_horz(k,iCell) = (c_s * config_len_disp)**2 * sqrt(max(0.,def2 - pr_inv*bv_freq2(k,iCell)))
@@ -253,11 +292,13 @@ contains
 
          else if (config_les_model == "prognostic_1.5_order") then
 
+            !$acc loop vector
             do k=1,nVertLevels  ! bound the tke here, currently hardwired
                ! scalars(index_tke,k,iCell) = max(0.,min(100.,scalars(index_tke,k,iCell)))
                scalars(index_tke,k,iCell) = max(0.,scalars(index_tke,k,iCell))
             end do
 
+            !$acc loop vector
             do k=1,nVertLevels
 
                delta_z = zgrid(k+1,iCell)-zgrid(k,iCell)
@@ -321,11 +362,16 @@ contains
 
          else
 
-            call mpas_log_write(' in les_models, no les scheme for '//trim(config_les_model), messageType=MPAS_LOG_CRIT)
+!MGD            call mpas_log_write(' in les_models, no les scheme for '//trim(config_les_model), messageType=MPAS_LOG_CRIT)
 
          end if ! end of config_les_model test
 
       end do ! loop over all owned cells (columns)
+
+      !$acc end parallel
+
+      !$acc exit data delete(dudx, dudy, dvdx, dvdy, dwdx, dwdy, dudz, dvdz, dwdz)
+      !$acc exit data delete(d_11, d_22, d_33, d_12, d_13, d_23)
 
       DEBUG_WRITE(' les_models ')
 
@@ -351,10 +397,18 @@ contains
       real (kind=RKIND), dimension(nVertLevels) :: theta, qvsw, temp, coefa
       logical :: dry_bv_frequency
 
+
       DEBUG_WRITE(' begin BV frequency calculations ')
 
+      !$acc enter data create(theta, temp, qvsw, coefa)
+
+      !$acc parallel default(present)
+
+      !$acc loop gang worker private(theta, temp, qvsw, coefa)
       do iCell = cellStart,cellEnd
+
 !DIR$ IVDEP
+         !$acc loop vector
          do k=1, nVertLevels
 
             theta(k) = theta_m(k,iCell) / (1._RKIND + rvord * scalars(index_qv,k,iCell))
@@ -371,6 +425,7 @@ contains
 
          end do
 
+         !$acc loop vector
          do k=2, nVertLevels-1
             dz = 0.5 * (zgrid(k+2,iCell)+zgrid(k+1,iCell)) - 0.5 * (zgrid(k,iCell)+zgrid(k-1,iCell))
             rdz = 1.0/dz
@@ -410,6 +465,10 @@ contains
          bn2(nVertLevels,iCell) = bn2(nVertLevels-1,iCell)
 
       end do
+
+      !$acc end parallel
+
+      !$acc exit data delete(theta, temp, qvsw, coefa)
 
       DEBUG_WRITE(' exiting BV frequency calculations ')
 
@@ -520,10 +579,15 @@ contains
       ! del^4 horizontal filter.  We compute this as del^2 ( del^2 (u) ).
       ! First, storage to hold the result from the first del^2 computation.
 
-      delsq_u(1:nVertLevels,edgeStart:edgeEnd) = 0.0
+      !$acc enter data create(u_mix)
+      !$acc enter data create(turb_vflux)
+
+      !$acc parallel default(present)
+
       tau_12_factor = 0.0
       if(config_les_model /= 'none') tau_12_factor = 1.0
 
+      !$acc loop gang worker
       do iEdge=edgeStart,edgeEnd
          cell1 = cellsOnEdge(1,iEdge)
          cell2 = cellsOnEdge(2,iEdge)
@@ -532,7 +596,13 @@ contains
          r_dc = invDcEdge(iEdge)
          r_dv = min(invDvEdge(iEdge), 4*invDcEdge(iEdge))
 
+         !$acc loop vector
+         do k = 1, nVertLevels
+            delsq_u(k,iEdge) = 0.0_RKIND
+         end do
+
 !DIR$ IVDEP
+         !$acc loop vector
          do k=1,nVertLevels
 
             ! Compute diffusion, computed as \nabla divergence - k \times \nabla vorticity
@@ -554,35 +624,61 @@ contains
          end do
       end do
 
+      !$acc end parallel
+
       if (h_mom_eddy_visc4 > 0.0) then  ! 4th order mixing is active
 
 !$OMP BARRIER
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker
          do iVertex=vertexStart,vertexEnd
-            delsq_vorticity(1:nVertLevels,iVertex) = 0.0
+            !$acc loop vector
+            do k = 1, nVertLevels
+               delsq_vorticity(k,iVertex) = 0.0_RKIND
+            end do
+
+            !$acc loop seq
             do i=1,vertexDegree
                iEdge = edgesOnVertex(i,iVertex)
                edge_sign = invAreaTriangle(iVertex) * dcEdge(iEdge) * edgesOnVertex_sign(i,iVertex)
+
+               !$acc loop vector
                do k=1,nVertLevels
                   delsq_vorticity(k,iVertex) = delsq_vorticity(k,iVertex) + edge_sign * delsq_u(k,iEdge)
                end do
             end do
          end do
 
+         !$acc loop gang worker
          do iCell=cellStart,cellEnd
-            delsq_divergence(1:nVertLevels,iCell) = 0.0
+            !$acc loop vector
+            do k = 1, nVertLevels
+               delsq_divergence(k,iCell) = 0.0_RKIND
+            end do
+
             r = invAreaCell(iCell)
+
+            !$acc loop seq
             do i=1,nEdgesOnCell(iCell)
                iEdge = edgesOnCell(i,iCell)
                edge_sign = r * dvEdge(iEdge) * edgesOnCell_sign(i,iCell)
+
+               !$acc loop vector
                do k=1,nVertLevels
                   delsq_divergence(k,iCell) = delsq_divergence(k,iCell) + edge_sign * delsq_u(k,iEdge)
                end do
             end do
          end do
 
+         !$acc end parallel
+
 !$OMP BARRIER
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker
          do iEdge=edgeSolveStart,edgeSolveEnd
             cell1 = cellsOnEdge(1,iEdge)
             cell2 = cellsOnEdge(2,iEdge)
@@ -594,6 +690,7 @@ contains
             r_dv = u_mix_scale * min(invDvEdge(iEdge), 4*invDcEdge(iEdge))
 
 !DIR$ IVDEP
+            !$acc loop vector
             do k=1,nVertLevels
 
                ! Compute diffusion, computed as \nabla divergence - k \times \nabla vorticity
@@ -610,6 +707,8 @@ contains
             end do
          end do
 
+         !$acc end parallel
+
       end if ! 4th order mixing is active
 
       !
@@ -619,11 +718,15 @@ contains
 
          if (config_mix_full) then  ! mix full state
 
+            !$acc parallel default(present)
+
+            !$acc loop gang worker
             do iEdge=edgeSolveStart,edgeSolveEnd
 
                cell1 = cellsOnEdge(1,iEdge)
                cell2 = cellsOnEdge(2,iEdge)
 
+               !$acc loop vector
                do k=2,nVertLevels-1
 
                   z1 = 0.5*(zgrid(k-1,cell1)+zgrid(k-1,cell2))
@@ -641,18 +744,25 @@ contains
                end do
             end do
 
+            !$acc end parallel
+
          else  ! idealized cases where we mix on the perturbation from the initial 1-D state
 
+            !$acc parallel default(present)
+
+            !$acc loop gang worker private(u_mix)
             do iEdge=edgeSolveStart,edgeSolveEnd
 
                cell1 = cellsOnEdge(1,iEdge)
                cell2 = cellsOnEdge(2,iEdge)
 
+               !$acc loop vector
                do k=1,nVertLevels
                   u_mix(k) = u(k,iEdge) - u_init(k) * cos( angleEdge(iEdge) ) &
                                         + v_init(k) * sin( angleEdge(iEdge) )
                end do
 
+               !$acc loop vector
                do k=2,nVertLevels-1
 
                   z1 = 0.5*(zgrid(k-1,cell1)+zgrid(k-1,cell2))
@@ -670,19 +780,25 @@ contains
                end do
             end do
 
+            !$acc end parallel
+
          end if  ! mix perturbation state
 
       end if  ! vertical mixing of horizontal momentum for les formulation
 
       if ( config_les_model /= "none") then
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker private(turb_vflux)
          do iEdge=edgeSolveStart,edgeSolveEnd
 
             cell1 = cellsOnEdge(1,iEdge)
             cell2 = cellsOnEdge(2,iEdge)
-            turb_vflux(nVertlevels+1) = 0.  !  no turbulent flux out of the domain
-            turb_vflux(1) = 0.  !  lower bc flux handled where ???
+            turb_vflux(nVertlevels+1) = 0.0_RKIND  !  no turbulent flux out of the domain
+            turb_vflux(1) = 0.0_RKIND  !  lower bc flux handled where ???
 
+            !$acc loop vector
             do k=2,nVertLevels
                rho_k_cell1 =  fzm(k)*rho_zz(k  ,cell1)*zz(k  ,cell1)*eddy_visc_vert(k  ,cell1) &
                              +fzp(k)*rho_zz(k-1,cell1)*zz(k-1,cell1)*eddy_visc_vert(k-1,cell1)
@@ -713,13 +829,19 @@ contains
                ! end test conditions
             end if
 
+            !$acc loop vector
             do k=1,nVertLevels
                tend_u_euler(k,iEdge) = tend_u_euler(k,iEdge) - rdzw(k)*(turb_vflux(k+1)-turb_vflux(k))
             end do
 
          end do
 
+         !$acc end parallel
+
       end if
+
+      !$acc exit data delete(turb_vflux)
+      !$acc exit data delete(u_mix)
 
       DEBUG_WRITE(' exiting u_dissipation_3d ')
 
@@ -804,11 +926,26 @@ contains
       DEBUG_WRITE(' les surface is '//trim(config_les_surface))
       DEBUG_WRITE(' 4th order hyperviscosity is $r ' COMMA realArgs=(/h_mom_eddy_visc4/))
 
-      delsq_w(1:nVertLevels,cellStart:cellEnd) = 0.0
+      !$acc enter data create(turb_vflux)
 
+      !$acc parallel default(present)
+
+      !$acc loop gang worker
       do iCell=cellStart,cellEnd
-         tend_w_euler(1:nVertLevels+1,iCell) = 0.0
+
+         !$acc loop vector
+         do k = 1, nVertLevels
+            delsq_w(k,iCell) = 0.0_RKIND
+         end do
+
+         !$acc loop vector
+         do k = 1, nVertLevels+1
+            tend_w_euler(k,iCell) = 0.0_RKIND
+         end do
+
          r_areaCell = invAreaCell(iCell)
+
+         !$acc loop seq
          do i=1,nEdgesOnCell(iCell)
             iEdge = edgesOnCell(i,iCell)
 
@@ -818,6 +955,7 @@ contains
             cell2 = cellsOnEdge(2,iEdge)
 
 !DIR$ IVDEP
+            !$acc loop vector
             do k=2,nVertLevels
 
                w_turb_flux =  edge_sign*(rho_edge(k,iEdge)+rho_edge(k-1,iEdge))*(w(k,cell2) - w(k,cell1))
@@ -830,12 +968,20 @@ contains
          end do
       end do
 
+      !$acc end parallel
+
 !$OMP BARRIER
 
       if (h_mom_eddy_visc4 > 0.0) then  ! 4th order mixing is active
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker
          do iCell=cellSolveStart,cellSolveEnd    ! Technically updating fewer cells than before...
+
             r_areaCell = h_mom_eddy_visc4 * invAreaCell(iCell)
+
+            !$acc loop seq
             do i=1,nEdgesOnCell(iCell)
                iEdge = edgesOnCell(i,iCell)
                cell1 = cellsOnEdge(1,iEdge)
@@ -843,6 +989,7 @@ contains
 
                edge_sign = meshScalingDel4(iEdge)*r_areaCell*dvEdge(iEdge)*edgesOnCell_sign(i,iCell) * invDcEdge(iEdge)
 
+               !$acc loop vector
                do k=2,nVertLevels
                   tend_w_euler(k,iCell) = tend_w_euler(k,iCell) - edge_sign * (delsq_w(k,cell2) - delsq_w(k,cell1))
                end do
@@ -850,12 +997,18 @@ contains
             end do
          end do
 
+         !$acc end parallel
+
       end if ! 4th order mixing is active
 
       if ( v_mom_eddy_visc2 > 0.0 ) then  ! vertical mixing
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker
          do iCell=cellSolveStart,cellSolveEnd
 !DIR$ IVDEP
+            !$acc loop vector
             do k=2,nVertLevels
                tend_w_euler(k,iCell) = tend_w_euler(k,iCell) + v_mom_eddy_visc2*0.5*(rho_zz(k,iCell)+rho_zz(k-1,iCell))*(  &
                                            (w(k+1,iCell)-w(k  ,iCell))*rdzw(k)                              &
@@ -863,12 +1016,19 @@ contains
             end do
          end do
 
+         !$acc end parallel
+
       end if
 
       if ( config_les_model /= "none") then
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker private(turb_vflux)
          do iCell = cellSolveStart,cellSolveEnd ! vertical mixing for each column
             ! compute turbulent fluxes
+     
+            !$acc loop vector
             do k=1,nVertLevels
                turb_vflux(k) = - rho_zz(k,iCell)*eddy_visc_vert(k,iCell)*zz(k,iCell)*(      &
                                           2.0*zz(k,iCell)*rdzw(k)*(w(k+1,iCell)-w(k,iCell))  &
@@ -877,13 +1037,18 @@ contains
 
             turb_vflux(nVertLevels+1) = 0.0
 
+            !$acc loop vector
             do k=2,nVertLevels
                tend_w_euler(k,iCell) = tend_w_euler(k,iCell) &
                                            - rdzu(k)*(turb_vflux(k)-turb_vflux(k-1))
             end do
          end do
 
+         !$acc end parallel
+
       end if
+
+      !$acc exit data delete(turb_vflux)
 
       DEBUG_WRITE(' exiting w_dissipation_3d ')
 
@@ -983,7 +1148,7 @@ contains
       real (kind=RKIND) :: z1, z2, z3, z4, zm, z0, zp
       real (kind=RKIND), dimension(nVertLevels+1) :: turb_vflux, prandtl_1d_inverse
       real (kind=RKIND), dimension(num_scalars,nVertLevels+1) :: turb_vflux_scalars
-      real (kind=RKIND) :: rho_k_at_w, zz_at_w
+      real (kind=RKIND), dimension(nVertLevels) :: rho_k_at_w, zz_at_w
 
       real (kind=RKIND) :: moisture_flux, heat_flux, theta_m_flux
       real (kind=RKIND) :: qv_cell, theta_m_cell, theta_cell
@@ -996,11 +1161,23 @@ contains
 
       if( mix_scalars .and. (dynamics_substep == 1)) call mpas_log_write(' scalar mixing on ')
 
-      delsq_theta(1:nVertLevels,cellStart:cellEnd) = 0.0
+      !$acc enter data create(turb_vflux_scalars)
+      !$acc enter data create(turb_vflux, prandtl_1d_inverse)
 
+      !$acc parallel default(present)
+
+      !$acc loop gang worker
       do iCell=cellStart,cellEnd
-         tend_theta_euler(1:nVertLevels,iCell) = 0.0
+
+         !$acc loop vector
+         do k = 1, nVertLevels
+            delsq_theta(k,iCell) = 0.0_RKIND
+            tend_theta_euler(k,iCell) = 0.0_RKIND
+         end do
+
          r_areaCell = invAreaCell(iCell)
+
+         !$acc loop seq
          do i=1,nEdgesOnCell(iCell)
             iEdge = edgesOnCell(i,iCell)
             edge_sign = r_areaCell*edgesOnCell_sign(i,iCell) * dvEdge(iEdge) * invDcEdge(iEdge)
@@ -1009,6 +1186,7 @@ contains
             cell2 = cellsOnEdge(2,iEdge)
 
 !DIR$ IVDEP
+            !$acc loop vector
             do k=1,nVertLevels
 
 !  we are computing the Smagorinsky filter at more points than needed here so as to pick up the delsq_theta for 4th order filter below.
@@ -1023,12 +1201,19 @@ contains
          end do
       end do
 
+      !$acc end parallel
+
 !$OMP BARRIER
 
       if (h_theta_eddy_visc4 > 0.0) then  ! 4th order mixing is active
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker
          do iCell=cellSolveStart,cellSolveEnd    ! Technically updating fewer cells than before...
             r_areaCell = h_theta_eddy_visc4 * prandtl_inv * invAreaCell(iCell)
+
+            !$acc loop seq
             do i=1,nEdgesOnCell(iCell)
 
                iEdge = edgesOnCell(i,iCell)
@@ -1037,11 +1222,14 @@ contains
                cell1 = cellsOnEdge(1,iEdge)
                cell2 = cellsOnEdge(2,iEdge)
 
+               !$acc loop vector
                do k=1,nVertLevels
                   tend_theta_euler(k,iCell) = tend_theta_euler(k,iCell) - edge_sign*(delsq_theta(k,cell2) - delsq_theta(k,cell1))
                end do
             end do
          end do
+
+         !$acc end parallel
 
       end if ! 4th order mixing is active
 
@@ -1049,11 +1237,19 @@ contains
 
          do iScalar=1,num_scalars
 
-            delsq_theta(1:nVertLevels,cellStart:cellEnd) = 0.0
+            !$acc parallel default(present)
 
+            !$acc loop gang worker
             do iCell=cellStart,cellEnd
+               !$acc loop vector
+               do k = 1, nVertLevels
+                  delsq_theta(k,iCell) = 0.0_RKIND
+               end do
+
                ! tend_theta_euler(1:nVertLevels,iCell) = 0.0
                r_areaCell = invAreaCell(iCell)
+
+               !$acc loop seq
                do i=1,nEdgesOnCell(iCell)
                   iEdge = edgesOnCell(i,iCell)
                   edge_sign = r_areaCell*edgesOnCell_sign(i,iCell) * dvEdge(iEdge) * invDcEdge(iEdge)
@@ -1062,6 +1258,7 @@ contains
                   cell2 = cellsOnEdge(2,iEdge)
 
 !DIR$ IVDEP
+                  !$acc loop vector
                   do k=1,nVertLevels
 
 !  we are computing the Smagorinsky filter at more points than needed here so as to pick up the delsq_theta for 4th order filter below.
@@ -1076,12 +1273,20 @@ contains
                end do
             end do
 
+            !$acc end parallel
+
 !$OMP BARRIER
 
             if (h_theta_eddy_visc4 > 0.0) then  ! 4th order mixing is active
 
+               !$acc parallel default(present)
+
+               !$acc loop gang worker
                do iCell=cellSolveStart,cellSolveEnd    ! Technically updating fewer cells than before...
+
                   r_areaCell = h_theta_eddy_visc4 * prandtl_inv * invAreaCell(iCell)
+
+                  !$acc loop seq
                   do i=1,nEdgesOnCell(iCell)
 
                      iEdge = edgesOnCell(i,iCell)
@@ -1090,11 +1295,14 @@ contains
                      cell1 = cellsOnEdge(1,iEdge)
                      cell2 = cellsOnEdge(2,iEdge)
 
+                     !$acc loop vector
                      do k=1,nVertLevels
                         tend_scalars(iScalar,k,iCell) = tend_scalars(iScalar,k,iCell) - edge_sign*(delsq_theta(k,cell2) - delsq_theta(k,cell1))
                      end do
                   end do
                end do
+
+               !$acc end parallel
 
             end if ! 4th order mixing is active
 
@@ -1109,7 +1317,12 @@ contains
 
          if (config_mix_full) then
 
+            !$acc parallel default(present)
+
+            !$acc loop gang worker
             do iCell = cellSolveStart,cellSolveEnd
+
+               !$acc loop vector
                do k=2,nVertLevels-1
                   z1 = zgrid(k-1,iCell)
                   z2 = zgrid(k  ,iCell)
@@ -1126,9 +1339,16 @@ contains
                end do
             end do
 
+            !$acc end parallel
+
          else  ! idealized cases where we mix on the perturbation from the initial 1-D state
 
+            !$acc parallel default(present)
+
+            !$acc loop gang worker
             do iCell = cellSolveStart,cellSolveEnd
+
+               !$acc loop vector
                do k=2,nVertLevels-1
                   z1 = zgrid(k-1,iCell)
                   z2 = zgrid(k  ,iCell)
@@ -1145,12 +1365,17 @@ contains
                end do
             end do
 
+            !$acc end parallel
+
          end if
 
       end if
 
       if ( config_les_model /= "none") then
 
+         !$acc parallel default(present)
+
+         !$acc loop gang worker private(turb_vflux, turb_vflux_scalars, prandtl_1d_inverse, rho_k_at_w, zz_at_w)
          do iCell = cellSolveStart,cellSolveEnd ! vertical mixing for each column
             ! compute turbulent fluxes
 
@@ -1158,6 +1383,7 @@ contains
             turb_vflux(1) = 0.  !  lower bc flux handled where ???
 
             if ( config_les_model == "3d_smagorinsky") then
+               !$acc loop vector
                do k=2,nVertLevels
                   prandtl_1d_inverse(k) = prandtl_inv
                end do
@@ -1173,6 +1399,7 @@ contains
                !   prandtl_inverse(k) = 1. + 2.*tke_length/delta_z
                ! end do
 
+               !$acc loop vector
                do k=2,nVertLevels
                   ! prandtl_1d_inverse(k) = 0.5*(prandtl_3d_inv(k,iCell)+prandtl_3d_inv(k-1,iCell))
                   prandtl_1d_inverse(k) = fzm(k)*prandtl_3d_inv(k,iCell)+fzp(k)*prandtl_3d_inv(k-1,iCell)
@@ -1180,16 +1407,17 @@ contains
 
             end if
 
+            !$acc loop vector
             do k=2,nVertLevels
 
                ! delta_z = 0.5*(zgrid(k+1,iCell)-zgrid(k-1,iCell))
                ! delta_s = ((config_len_disp**2)*delta_z)**(1./3.)
                ! bv_frequency2 = 0.5*(bv_freq2(k)+bv_freq(k-1))
                ! bv = max( sqrt(abs(bv_frequency2)), epsilon_bv )
-               rho_k_at_w =  fzm(k)*rho_zz(k  ,iCell)*zz(k  ,iCell)*zz(k  ,iCell)*eddy_visc_vert(k  ,iCell) &
-                            +fzp(k)*rho_zz(k-1,iCell)*zz(k-1,iCell)*zz(k-1,iCell)*eddy_visc_vert(k-1,iCell)
-               zz_at_w = fzm(k)*zz(k,iCell)+fzp(k)*zz(k-1,iCell)
-               turb_vflux(k) = - prandtl_1d_inverse(k)*rho_k_at_w*zz_at_w*rdzu(k)*(theta_m(k,iCell)-theta_m(k-1,iCell))
+               rho_k_at_w(k) =  fzm(k)*rho_zz(k  ,iCell)*zz(k  ,iCell)*zz(k  ,iCell)*eddy_visc_vert(k  ,iCell) &
+                             +fzp(k)*rho_zz(k-1,iCell)*zz(k-1,iCell)*zz(k-1,iCell)*eddy_visc_vert(k-1,iCell)
+               zz_at_w(k) = fzm(k)*zz(k,iCell)+fzp(k)*zz(k-1,iCell)
+               turb_vflux(k) = - prandtl_1d_inverse(k)*rho_k_at_w(k)*zz_at_w(k)*rdzu(k)*(theta_m(k,iCell)-theta_m(k-1,iCell))
             end do
 
             ! test boundary conditions for supercell and les test cases
@@ -1224,6 +1452,7 @@ contains
 
             end if
 
+            !$acc loop vector
             do k=1,nVertLevels
                tend_theta_euler(k,iCell) = tend_theta_euler(k,iCell) &
                                            - rdzw(k)*(turb_vflux(k+1)-turb_vflux(k))
@@ -1232,20 +1461,30 @@ contains
             if (mix_scalars ) then
 
                ! compute turbulent fluxes
-               turb_vflux_scalars(:,nVertlevels+1) = 0.  !  no turbulent flux out of the domain
-               turb_vflux_scalars(:,1) = 0.  !  lower bc flux handled where ???
+               !$acc loop vector
+               do iScalar=1,num_scalars
+                  turb_vflux_scalars(iScalar,nVertlevels+1) = 0.0_RKIND  !  no turbulent flux out of the domain
+                  turb_vflux_scalars(iScalar,1) = 0.0_RKIND  !  lower bc flux handled where ???
+               end do
+
+               !$acc loop vector
                do k=2,nVertLevels
-                  rho_k_at_w =  fzm(k)*rho_zz(k  ,iCell)*zz(k  ,iCell)*zz(k  ,iCell)*eddy_visc_vert(k  ,iCell) &
-                               +fzp(k)*rho_zz(k-1,iCell)*zz(k-1,iCell)*zz(k-1,iCell)*eddy_visc_vert(k-1,iCell)
-                  zz_at_w = fzm(k)*zz(k,iCell)+fzp(k)*zz(k-1,iCell)
+                  rho_k_at_w(k) = fzm(k)*rho_zz(k  ,iCell)*zz(k  ,iCell)*zz(k  ,iCell)*eddy_visc_vert(k  ,iCell) &
+                                + fzp(k)*rho_zz(k-1,iCell)*zz(k-1,iCell)*zz(k-1,iCell)*eddy_visc_vert(k-1,iCell)
+                  zz_at_w(k) = fzm(k)*zz(k,iCell)+fzp(k)*zz(k-1,iCell)
+               end do
+
+               !$acc loop vector collapse(2)
+               do k=2,nVertLevels
                   do iScalar=1,num_scalars
-                     turb_vflux_scalars(iScalar,k) = - prandtl_1d_inverse(k)*rho_k_at_w*zz_at_w*rdzu(k)*  &
+                     turb_vflux_scalars(iScalar,k) = - prandtl_1d_inverse(k)*rho_k_at_w(k)*zz_at_w(k)*rdzu(k)*  &
                                                       (scalars(iScalar,k,iCell)-scalars(iScalar,k-1,iCell))
                   end do
                end do
 
                if( config_les_surface == "specified" .or.  config_les_surface == "varying" ) turb_vflux_scalars(index_qv,1) = moisture_flux ! lower b.c. for qv
 
+               !$acc loop vector collapse(2)
                do k=1,nVertLevels
                   do iScalar=1,num_scalars
                      tend_scalars(iScalar,k,iCell) = tend_scalars(iScalar,k,iCell) &
@@ -1257,7 +1496,12 @@ contains
 
          end do  ! loop over cells (columns)
 
+         !$acc end parallel
+
       end if
+
+      !$acc exit data delete(turb_vflux_scalars)
+      !$acc exit data delete(turb_vflux, prandtl_1d_inverse)
 
       DEBUG_WRITE(' exiting scalar_dissipation_3d ')
 
