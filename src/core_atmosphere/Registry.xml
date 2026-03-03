@@ -146,6 +146,31 @@
                      description="Formulation of horizontal mixing"
                      possible_values="`2d_fixed' or `2d_smagorinsky'"/>
 
+                <nml_option name="config_les_model" type="character" default_value="none"
+                     units="-"
+                     description="LES dissipation model"
+                     possible_values="`none', `3d_smagorinsky', `prognostic_1.5_order'"/>
+
+                <nml_option name="config_les_surface" type="character" default_value="none"
+                     units="-"
+                     description="LES surface flux option"
+                     possible_values="`specified', `varying'"/>
+
+                <nml_option name="config_surface_heat_flux" type="real" default_value="0.0"
+                     units="K m s-1"
+                     description="specified surface heat flux w'theta'"
+                     possible_values="real number"/>
+
+                <nml_option name="config_surface_moisture_flux" type="real" default_value="0.0"
+                     units="kg m s-1"
+                     description="specified surface moisture flux w'q'"
+                     possible_values="real number"/>
+
+                <nml_option name="config_surface_drag_coefficient" type="real" default_value="0.0"
+                     units="-"
+                     description="Cd 10m drag coefficient"
+                     possible_values="real number"/>
+
                 <nml_option name="config_len_disp" type="real" default_value="0.0" in_defaults="false"
                      units="m"
                      description="Horizontal length scale, used by the Smagorinsky formulation of horizontal diffusion and by 3-d divergence damping"
@@ -155,6 +180,11 @@
                      units="m s^{-1}"
                      description="Coefficient multiplied by $\delta x^3$ to obtain $\nabla^4$ physical hyperviscosity"
                      possible_values="Non-negative real values"/>
+
+                <nml_option name="config_mix_scalars" type="logical" default_value="false"
+                     units="-"
+                     description="Whether to enable horizontal and vertical mixing for scalars"
+                     possible_values=".true. or .false."/>
 
                 <nml_option name="config_del4u_div_factor" type="real" default_value="10.0" in_defaults="false"
                      units="-"
@@ -515,6 +545,11 @@
 			<var name="deriv_two"/>
 			<var name="defc_a"/>
 			<var name="defc_b"/>
+			<var name="deformation_coef_c2"/>
+			<var name="deformation_coef_s2"/>
+			<var name="deformation_coef_cs"/>
+			<var name="deformation_coef_c"/>
+			<var name="deformation_coef_s"/>
 			<var name="coeffs_reconstruct"/>
 #ifdef MPAS_CAM_DYCORE
 			<var name="cell_gradient_coef_x"/>
@@ -1594,6 +1629,20 @@
                 <var name="cell_gradient_coef_y" type="real" dimensions="maxEdges nCells" units="m^-1"
                      description="Coefficients for computing the y (meridional) derivative of a cell-centered variable"/>
 #endif
+                <var name="deformation_coef_c2" type="real" dimensions="maxEdges nCells" units="unitless"
+                     description="Coefficients for computing the cos-squared terms of the 3d deformation"/>
+
+                <var name="deformation_coef_s2" type="real" dimensions="maxEdges nCells" units="unitless"
+                     description="Coefficients for computing the sine-squared terms of the 3d deformation"/>
+
+                <var name="deformation_coef_cs" type="real" dimensions="maxEdges nCells" units="unitless"
+                     description="Coefficients for computing the cos-sine terms of the 3d deformation"/>
+
+                <var name="deformation_coef_c" type="real" dimensions="maxEdges nCells" units="unitless"
+                     description="Coefficients for computing the cos-only terms of the 3d deformation"/>
+
+                <var name="deformation_coef_s" type="real" dimensions="maxEdges nCells" units="unitless"
+                     description="Coefficients for computing the sine-only terms of the 3d deformation"/>
 
                 <!-- Arrays required for reconstruction of velocity field -->
                 <var name="coeffs_reconstruct" type="real" dimensions="R3 maxEdges nCells" units="unitless"
@@ -1706,6 +1755,9 @@
                         <var name="nwfa" array_group="number" units="nb kg^{-1}"
                              description="Water-friendly aerosol number concentration"
                              packages="mp_thompson_aers_in"/>
+
+                        <var name="tke" array_group="turbulence" units="m^2 s^{-2}"
+                             description="Turbulent kinetic energy for the prognostic tke LES scheme"/>
                 </var_array>
 #endif
 
@@ -1954,8 +2006,20 @@
                 <var name="rho_p_save" type="real" dimensions="nVertLevels nCells Time" units="kg m^{-3}"
                      description="predicted value rho_p, saved before acoustic steps"/>
 
-                <var name="kdiff" type="real" dimensions="nVertLevels nCells Time" units="m^2 s^{-1}"
-                     description="Smagorinsky horizontal eddy viscosity"/>
+                <var name="eddy_visc_vert" type="real" dimensions="nVertLevels nCells Time" units="m^2 s^{-1}"
+                     description="vertical eddy viscosity for les models"/>
+
+                <var name="eddy_visc_horz" type="real" dimensions="nVertLevels nCells Time" units="m^2 s^{-1}"
+                     description="horizontal eddy viscosity for les models"/>
+
+                <var name="prandtl_3d_inv" type="real" dimensions="nVertLevels nCells Time" units="unitless"
+                     description="Inverse prandtl number used for vertical mixing in prognostic LES formulation"/>
+
+                <var name="bn2" type="real" dimensions="nVertLevels nCells Time" units="s^{-2}"
+                     description="Square of Brunt-Vaisala frequency"/>
+
+                <var name="tend_rtheta_adv" type="real" dimensions="nVertLevels nCells Time" units="kg K m^{-3} s^{-1}"
+                     description="flux divergence for rho*theta_m/zz, used in the Tiedtke convective parameterization"/>
 
                 <var name="surface_pressure" type="real" dimensions="nCells Time" units="Pa"
                      description="Diagnosed surface pressure"/>
@@ -2057,6 +2121,9 @@
                         <var name="tend_nwfa" name_in_code="nwfa" array_group="number" units="nb m^{-3} s^{-1}"
                              description="Tendency of water-friendly aerosol number concentration multiplied by dry air density divided by d(zeta)/dz"
                              packages="mp_thompson_aers_in"/>
+
+                        <var name="tend_tke" name_in_code="tke" array_group="turbulence" units="kg m^{-3} m^2 s^{-2} s^{-1}" 
+                             description="Tendency of tke multiplied by dry air density divided by d(zeta)/dz"/>
                 </var_array>
 #endif
         </var_struct>
@@ -2135,6 +2202,10 @@
                         <var name="lbc_nwfa" name_in_code="nwfa" array_group="number" packages="mp_thompson_aers_in"
                              units="m^{-3} s^{-1}"
                              description="Lateral boundary tendency of water-friendly aerosol number concentration"/>
+
+                        <var name="lbc_tke" name_in_code="tke" array_group="turbulence"
+                             units="m^2 s^{-3}"
+                             description="Lateral boundary tendency of TKE"/>
                 </var_array>
         </var_struct>
 
