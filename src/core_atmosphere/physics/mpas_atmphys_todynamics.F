@@ -13,10 +13,11 @@
  use mpas_atm_dimensions
 
  use mpas_atmphys_constants, only: R_d,R_v,degrad
+ use mpas_timer, only: mpas_timer_start, mpas_timer_stop
 
  implicit none
  private
- public:: physics_get_tend
+ public:: physics_get_tend, pre_physics_get_tend, post_physics_get_tend
 
 
 !Interface between the physics parameterizations and the non-hydrostatic dynamical core.
@@ -47,6 +48,40 @@
 
  contains
 
+
+!=================================================================================================================
+ subroutine pre_physics_get_tend(configs,state,diag,tend)
+!=================================================================================================================
+
+!input variables:
+ type(mpas_pool_type),intent(in):: configs
+ type(mpas_pool_type),intent(in):: state
+ type(mpas_pool_type),intent(in):: diag
+ type(mpas_pool_type),intent(in):: tend
+
+#ifdef MPAS_OPENACC
+!local variables:
+ real(kind=RKIND),dimension(:,:),pointer:: mass          ! time level 2 rho_zz
+ real(kind=RKIND),dimension(:,:),pointer:: mass_edge     ! diag rho_edge
+ real(kind=RKIND),dimension(:,:),pointer:: theta_m       ! time level 1
+ real(kind=RKIND),dimension(:,:,:),pointer:: scalars
+
+ real(kind=RKIND),dimension(:,:),pointer:: tend_u_phys
+ real(kind=RKIND),dimension(:,:,:),pointer:: tend_scalars
+
+ call mpas_pool_get_array(state,'theta_m' ,theta_m,1)
+ call mpas_pool_get_array(state,'scalars' ,scalars,1)
+ call mpas_pool_get_array(state,'rho_zz'  ,mass,2   )
+ call mpas_pool_get_array(diag ,'rho_edge',mass_edge)
+ call mpas_pool_get_array(diag ,'tend_u_phys',tend_u_phys)
+
+ !$acc update self(theta_m, scalars, mass, mass_edge)
+
+ call mpas_pool_get_array(tend,'scalars_tend',tend_scalars)
+ !$acc update self(tend_scalars) ! Probably not needed
+#endif
+
+ end subroutine pre_physics_get_tend
  
 !=================================================================================================================
  subroutine physics_get_tend(block,mesh,state,diag,tend,tend_physics,configs,rk_step,dynamics_substep, &
@@ -231,6 +266,26 @@
  deallocate(tend_th)
 
  end subroutine physics_get_tend
+
+ !=================================================================================================================
+ subroutine post_physics_get_tend(configs,state,diag,tend)
+!=================================================================================================================
+
+!input variables:
+ type(mpas_pool_type),intent(in):: configs
+ type(mpas_pool_type),intent(in):: state
+ type(mpas_pool_type),intent(in):: diag
+ type(mpas_pool_type),intent(in):: tend
+
+#ifdef MPAS_OPENACC
+!local variables:
+ real(kind=RKIND),dimension(:,:,:),pointer:: tend_scalars
+
+ call mpas_pool_get_array(tend,'scalars_tend',tend_scalars)
+ !$acc update device(tend_scalars)
+#endif
+
+ end subroutine post_physics_get_tend
 
 !=================================================================================================================
  subroutine physics_get_tend_work( &
