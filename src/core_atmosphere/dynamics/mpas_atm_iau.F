@@ -76,6 +76,66 @@ module mpas_atm_iau
       end if  
 
  end function atm_iau_coef
+
+!==================================================================================================
+ subroutine pre_add_tend_anal_incr(configs,structs)
+!==================================================================================================
+
+      implicit none
+
+      type (mpas_pool_type), intent(in) :: configs
+      type (mpas_pool_type), intent(inout) :: structs
+
+#ifdef MPAS_OPENACC
+      type (mpas_pool_type), pointer :: tend
+      type (mpas_pool_type), pointer :: state
+      type (mpas_pool_type), pointer :: diag
+
+      real (kind=RKIND), dimension(:,:), pointer :: rho_edge, rho_zz, theta_m
+      real (kind=RKIND), dimension(:,:,:), pointer :: scalars, tend_scalars
+
+      call mpas_pool_get_subpool(structs, 'tend', tend)
+      call mpas_pool_get_subpool(structs, 'state', state)
+      call mpas_pool_get_subpool(structs, 'diag', diag)
+
+      call mpas_pool_get_array(state, 'theta_m', theta_m, 1)
+      call mpas_pool_get_array(state, 'scalars', scalars, 1)
+      call mpas_pool_get_array(state, 'rho_zz',   rho_zz, 2)
+      call mpas_pool_get_array(diag , 'rho_edge', rho_edge)
+      !$acc update self(theta_m, scalars, rho_zz, rho_edge)
+
+      call mpas_pool_get_array(tend, 'scalars_tend', tend_scalars)
+      !$acc update self(tend_scalars)
+#endif
+
+ end subroutine pre_add_tend_anal_incr
+
+!==================================================================================================
+ subroutine post_add_tend_anal_incr(configs,structs, tend_ru, tend_rtheta, tend_rho)
+!==================================================================================================
+
+      implicit none
+
+      type (mpas_pool_type), intent(in) :: configs
+      type (mpas_pool_type), intent(inout) :: structs
+      real (kind=RKIND), dimension(:,:), intent(inout) :: tend_ru
+      real (kind=RKIND), dimension(:,:), intent(inout) :: tend_rtheta
+      real (kind=RKIND), dimension(:,:), intent(inout) :: tend_rho
+
+#ifdef MPAS_OPENACC
+      type (mpas_pool_type), pointer :: tend
+
+      real (kind=RKIND), dimension(:,:,:), pointer :: tend_scalars
+
+      call mpas_pool_get_subpool(structs, 'tend', tend)
+
+      !$acc update device(tend_ru, tend_rtheta, tend_rho)
+
+      call mpas_pool_get_array(tend, 'scalars_tend', tend_scalars)
+      !$acc update device(tend_scalars)
+#endif
+
+ end subroutine post_add_tend_anal_incr
       
 !==================================================================================================
  subroutine atm_add_tend_anal_incr (configs, structs, itimestep, dt, tend_ru, tend_rtheta, tend_rho)
