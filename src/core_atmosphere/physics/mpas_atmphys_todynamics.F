@@ -6,6 +6,15 @@
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
 !=================================================================================================================
+
+#ifdef MPAS_OPENACC
+#define MPAS_ACC_TIMER_START(X) call mpas_timer_start(X)
+#define MPAS_ACC_TIMER_STOP(X) call mpas_timer_stop(X)
+#else
+#define MPAS_ACC_TIMER_START(X)
+#define MPAS_ACC_TIMER_STOP(X)
+#endif
+
  module mpas_atmphys_todynamics
  use mpas_kind_types
  use mpas_pool_routines
@@ -69,6 +78,7 @@
  real(kind=RKIND),dimension(:,:),pointer:: tend_u_phys
  real(kind=RKIND),dimension(:,:,:),pointer:: tend_scalars
 
+ MPAS_ACC_TIMER_START('atm_srk3: physics ACC_data_xfer')
  call mpas_pool_get_array(state,'theta_m' ,theta_m,1)
  call mpas_pool_get_array(state,'scalars' ,scalars,1)
  call mpas_pool_get_array(state,'rho_zz'  ,mass,2   )
@@ -79,6 +89,7 @@
 
  call mpas_pool_get_array(tend,'scalars_tend',tend_scalars)
  !$acc update self(tend_scalars) ! Probably not needed
+ MPAS_ACC_TIMER_STOP('atm_srk3: physics ACC_data_xfer')
 #endif
 
  end subroutine pre_physics_get_tend
@@ -281,8 +292,10 @@
 !local variables:
  real(kind=RKIND),dimension(:,:,:),pointer:: tend_scalars
 
+ MPAS_ACC_TIMER_START('atm_srk3: physics ACC_data_xfer')
  call mpas_pool_get_array(tend,'scalars_tend',tend_scalars)
  !$acc update device(tend_scalars)
+ MPAS_ACC_TIMER_STOP('atm_srk3: physics ACC_data_xfer')
 #endif
 
  end subroutine post_physics_get_tend

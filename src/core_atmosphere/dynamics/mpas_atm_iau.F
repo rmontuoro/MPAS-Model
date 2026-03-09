@@ -5,6 +5,15 @@
 ! Additional copyright and license information can be found in the LICENSE file
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
+
+#ifdef MPAS_OPENACC
+#define MPAS_ACC_TIMER_START(X) call mpas_timer_start(X)
+#define MPAS_ACC_TIMER_STOP(X) call mpas_timer_stop(X)
+#else
+#define MPAS_ACC_TIMER_START(X)
+#define MPAS_ACC_TIMER_STOP(X)
+#endif
+
 module mpas_atm_iau
 
  use mpas_derived_types
@@ -13,9 +22,10 @@ module mpas_atm_iau
  use mpas_dmpar
  use mpas_constants   
  use mpas_log, only : mpas_log_write
+ use mpas_timer, only: mpas_timer_start, mpas_timer_stop
 
- !public :: atm_compute_iau_coef, atm_add_tend_anal_incr  
-      
+ !public :: atm_compute_iau_coef, atm_add_tend_anal_incr
+
  contains
 
 !==================================================================================================
@@ -98,6 +108,7 @@ module mpas_atm_iau
       call mpas_pool_get_subpool(structs, 'state', state)
       call mpas_pool_get_subpool(structs, 'diag', diag)
 
+      MPAS_ACC_TIMER_START('atm_srk3: physics ACC_data_xfer')
       call mpas_pool_get_array(state, 'theta_m', theta_m, 1)
       call mpas_pool_get_array(state, 'scalars', scalars, 1)
       call mpas_pool_get_array(state, 'rho_zz',   rho_zz, 2)
@@ -106,6 +117,7 @@ module mpas_atm_iau
 
       call mpas_pool_get_array(tend, 'scalars_tend', tend_scalars)
       !$acc update self(tend_scalars)
+      MPAS_ACC_TIMER_STOP('atm_srk3: physics ACC_data_xfer')
 #endif
 
  end subroutine pre_add_tend_anal_incr
@@ -129,10 +141,12 @@ module mpas_atm_iau
 
       call mpas_pool_get_subpool(structs, 'tend', tend)
 
+      MPAS_ACC_TIMER_START('atm_srk3: physics ACC_data_xfer')
       !$acc update device(tend_ru, tend_rtheta, tend_rho)
 
       call mpas_pool_get_array(tend, 'scalars_tend', tend_scalars)
       !$acc update device(tend_scalars)
+      MPAS_ACC_TIMER_STOP('atm_srk3: physics ACC_data_xfer')
 #endif
 
  end subroutine post_add_tend_anal_incr

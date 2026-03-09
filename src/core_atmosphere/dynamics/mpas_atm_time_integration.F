@@ -324,6 +324,8 @@ module atm_time_integration
       nullify(mesh)
       call mpas_pool_get_subpool(domain % blocklist % structs, 'mesh', mesh)
 
+      MPAS_ACC_TIMER_START('mpas_dynamics_init [ACC_data_xfer]')
+
       call mpas_pool_get_array(mesh, 'dvEdge', dvEdge)
       !$acc enter data copyin(dvEdge)
 
@@ -527,6 +529,8 @@ module atm_time_integration
 
       call mpas_pool_get_array(mesh, 'deformation_coef_s', deformation_coef_s)
       !$acc enter data copyin(deformation_coef_s)
+
+      MPAS_ACC_TIMER_STOP('mpas_dynamics_init [ACC_data_xfer]')
 #endif
 
    end subroutine mpas_atm_dynamics_init
@@ -594,6 +598,8 @@ module atm_time_integration
       call mpas_pool_get_subpool(block % structs, 'state', state)
       nullify(diag)
       call mpas_pool_get_subpool(block % structs, 'diag', diag)
+
+      MPAS_ACC_TIMER_START('first_compute_solve_diagnostics [ACC_data_xfer]')
 
       call mpas_pool_get_array(state, 'rho_zz', h, 1)
       !$acc enter data create(h)
@@ -714,6 +720,7 @@ module atm_time_integration
       call mpas_pool_get_array(mesh, 'fVertex', fVertex)
       !$acc enter data copyin(fVertex)
 
+      MPAS_ACC_TIMER_STOP('first_compute_solve_diagnostics [ACC_data_xfer]')
 #endif
 
    end subroutine mpas_atm_pre_compute_solve_diagnostics
@@ -782,6 +789,8 @@ module atm_time_integration
       call mpas_pool_get_subpool(block % structs, 'state', state)
       nullify(diag)
       call mpas_pool_get_subpool(block % structs, 'diag', diag)
+
+      MPAS_ACC_TIMER_START('first_compute_solve_diagnostics [ACC_data_xfer]')
 
       call mpas_pool_get_array(state, 'rho_zz', h, 1)
       !$acc exit data copyout(h)
@@ -892,6 +901,7 @@ module atm_time_integration
       call mpas_pool_get_array(mesh, 'fVertex', fVertex)
       !$acc exit data delete(fVertex)
 
+      MPAS_ACC_TIMER_STOP('first_compute_solve_diagnostics [ACC_data_xfer]')
 #endif
 
    end subroutine mpas_atm_post_compute_solve_diagnostics
@@ -973,6 +983,7 @@ module atm_time_integration
       call mpas_pool_get_config(domain % blocklist % configs, 'config_apply_lbcs', config_apply_lbcs_ptr)
       config_apply_lbcs = config_apply_lbcs_ptr
 
+      MPAS_ACC_TIMER_START('atm_srk3 [ACC_data_xfer]')
       call mpas_pool_get_array(diag, 'ru', ru)
       !$acc enter data copyin(ru) ! use values from atm_init_coupled_diagnostics
       call mpas_pool_get_array(diag, 'ru_p', ru_p)
@@ -1176,6 +1187,7 @@ module atm_time_integration
       call mpas_pool_get_array(tend_physics, 'rthdynten', rthdynten)
       !$acc enter data copyin(rthdynten)
 
+      MPAS_ACC_TIMER_STOP('atm_srk3 [ACC_data_xfer]')
 #endif
 
    end subroutine mpas_atm_pre_dynamics
@@ -1257,6 +1269,7 @@ module atm_time_integration
       call mpas_pool_get_config(domain % blocklist % configs, 'config_apply_lbcs', config_apply_lbcs_ptr)
       config_apply_lbcs = config_apply_lbcs_ptr
 
+      MPAS_ACC_TIMER_START('atm_srk3 [ACC_data_xfer]')
       call mpas_pool_get_array(diag, 'ru', ru)
       !$acc exit data copyout(ru) ! use values from atm_init_coupled_diagnostics
       call mpas_pool_get_array(diag, 'ru_p', ru_p)
@@ -1458,6 +1471,7 @@ module atm_time_integration
 
       call mpas_pool_get_array(tend_physics, 'rthdynten', rthdynten)
       !$acc exit data copyout(rthdynten)
+      MPAS_ACC_TIMER_STOP('atm_srk3 [ACC_data_xfer]')
 #endif
 
    end subroutine mpas_atm_post_dynamics
@@ -2096,6 +2110,7 @@ module atm_time_integration
       !
       ! Communicate halos for theta_m, scalars, pressure_p, and rtheta_p
       !
+      MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
       call mpas_pool_get_array(state, 'theta_m', theta_m, 1)
       call mpas_pool_get_array(state, 'scalars', scalars_1, 1)
       call mpas_pool_get_array(diag, 'pressure_p', pressure_p)
@@ -2103,6 +2118,7 @@ module atm_time_integration
       !$acc update self(theta_m,scalars_1,pressure_p,rtheta_p)
       call exchange_halo_group(domain, 'dynamics:theta_m,scalars,pressure_p,rtheta_p')
       !$acc update device(theta_m,scalars_1,pressure_p,rtheta_p)
+      MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
       call mpas_timer_start('atm_rk_integration_setup')
 
@@ -2191,10 +2207,12 @@ module atm_time_integration
 !$OMP END PARALLEL DO
          call mpas_timer_stop('atm_compute_vert_imp_coefs')
 
-         call mpas_pool_get_array(diag, 'exner', exner)  
+         MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
+         call mpas_pool_get_array(diag, 'exner', exner)
          !$acc update self(exner)
          call exchange_halo_group(domain, 'dynamics:exner')
          !$acc update device(exner)
+         MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
          ! BEGIN Runge-Kutta loop 
@@ -2273,10 +2291,12 @@ module atm_time_integration
             !***********************************
 
 ! tend_u
+            MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
             call mpas_pool_get_array(tend, 'u', tend_u)
             !$acc update self(tend_u)
             call exchange_halo_group(domain, 'dynamics:tend_u')
             !$acc update device(tend_u)
+            MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
    
             call mpas_timer_start('small_step_prep')
    
@@ -2352,10 +2372,12 @@ module atm_time_integration
 
             do small_step = 1, number_sub_steps(rk_step)
 
+               MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
                call mpas_pool_get_array(diag, 'rho_pp', rho_pp)
                !$acc update self(rho_pp)
                call exchange_halo_group(domain, 'dynamics:rho_pp')
                !$acc update device(rho_pp)
+               MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
                call mpas_timer_start('atm_advance_acoustic_step')
 
@@ -2377,10 +2399,12 @@ module atm_time_integration
   
 ! rtheta_pp
 ! This is the only communications needed during the acoustic steps because we solve for u on all edges of owned cells
+               MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
                call mpas_pool_get_array(diag, 'rtheta_pp', rtheta_pp)
                !$acc update self(rtheta_pp)
                call exchange_halo_group(domain, 'dynamics:rtheta_pp')
                !$acc update device(rtheta_pp)
+               MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
 !  complete update of horizontal momentum by including 3d divergence damping at the end of the acoustic step
 
@@ -2400,6 +2424,7 @@ module atm_time_integration
             !
             ! Communicate halos for rw_p[1,2], ru_p[1,2], rho_pp[1,2], rtheta_pp[2]
             !
+            MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
             call mpas_pool_get_array(diag, 'ru_p', ru_p)
             call mpas_pool_get_array(diag, 'rw_p', rw_p)
             call mpas_pool_get_array(diag, 'rho_pp', rho_pp)
@@ -2407,6 +2432,7 @@ module atm_time_integration
             !$acc update self(rw_p,ru_p,rho_pp,rtheta_pp)
             call exchange_halo_group(domain, 'dynamics:rw_p,ru_p,rho_pp,rtheta_pp')
             !$acc update device(rw_p,ru_p,rho_pp,rtheta_pp)
+            MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
             call mpas_timer_start('atm_recover_large_step_variables')
 
@@ -2474,6 +2500,7 @@ module atm_time_integration
 
 !-------------------------------------------------------------------
             
+            MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
             call mpas_pool_get_array(state, 'u', u, 2)
             !$acc update self(u)
             ! u
@@ -2483,6 +2510,7 @@ module atm_time_integration
                call exchange_halo_group(domain, 'dynamics:u_3')
             end if
             !$acc update device(u)
+            MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
             ! scalar advection: RK3 scheme of Skamarock and Gassmann (2011). 
             ! PD or monotonicity constraints applied only on the final Runge-Kutta substep.
@@ -2494,10 +2522,12 @@ module atm_time_integration
 
                if (config_apply_lbcs) then  ! adjust boundary tendencies for regional_MPAS scalar transport
 
+                  MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
                   call mpas_pool_get_array(state, 'scalars', scalars_2, 2)
                   !$acc update self(scalars_2)
                   call exchange_halo_group(domain, 'dynamics:scalars')
                   !$acc update device(scalars_2)
+                  MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
                   allocate(scalars_driving(num_scalars,nVertLevels,nCells+1))
 
@@ -2549,6 +2579,7 @@ module atm_time_integration
 
             call mpas_timer_stop('atm_compute_solve_diagnostics')
 
+            MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
             call mpas_pool_get_array(state, 'w', w, 2)
             call mpas_pool_get_array(diag, 'pv_edge', pv_edge)
             call mpas_pool_get_array(diag, 'rho_edge', rho_edge)            
@@ -2568,6 +2599,7 @@ module atm_time_integration
                call exchange_halo_group(domain, 'dynamics:w,pv_edge,rho_edge')
             end if
             !$acc update device(w,pv_edge,rho_edge)
+            MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
             ! set the zero-gradient condition on w for regional_MPAS
             
@@ -2580,11 +2612,13 @@ module atm_time_integration
               end do
 !$OMP END PARALLEL DO
 
+              MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
               ! w halo values needs resetting after regional boundary update
               call mpas_pool_get_array(state, 'w', w, 2)
               !$acc update self(w)
               call exchange_halo_group(domain, 'dynamics:w')
               !$acc update device(w)
+              MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
             end if ! end of regional_MPAS addition 
 
@@ -2595,12 +2629,14 @@ module atm_time_integration
             !
             ! Communicate halos for theta_m[1,2], pressure_p[1,2], and rtheta_p[1,2]
             !
+            MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
             call mpas_pool_get_array(state, 'theta_m', theta_m, 2)
             call mpas_pool_get_array(diag, 'pressure_p', pressure_p)
             call mpas_pool_get_array(diag, 'rtheta_p', rtheta_p)
             !$acc update self(theta_m,pressure_p,rtheta_p)
             call exchange_halo_group(domain, 'dynamics:theta_m,pressure_p,rtheta_p')
             !$acc update device(theta_m,pressure_p,rtheta_p)
+            MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
             !
             ! Note: A halo exchange for 'exner' here as well as after the call
@@ -2665,11 +2701,13 @@ module atm_time_integration
 
             if (config_apply_lbcs) then  ! adjust boundary tendencies for regional_MPAS scalar transport
 
+               MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
                ! need to fill halo for horizontal filter
                call mpas_pool_get_array(state, 'scalars', scalars_2, 2)
                !$acc update self(scalars_2)
                call exchange_halo_group(domain, 'dynamics:scalars')
                !$acc update device(scalars_2)
+               MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
    
                allocate(scalars_driving(num_scalars,nVertLevels,nCells+1))
 
@@ -2695,10 +2733,12 @@ module atm_time_integration
 !------------------------------------------------------------------------------------------------------------------------
 
             if (rk_step < 3) then
+               MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
                call mpas_pool_get_array(state, 'scalars', scalars_2, 2)
                !$acc update self(scalars_2)
                call exchange_halo_group(domain, 'dynamics:scalars')
                !$acc update device(scalars_2)
+               MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
             end if
 
          end do RK3_SPLIT_TRANSPORT
@@ -2825,10 +2865,12 @@ module atm_time_integration
 
       if (config_apply_lbcs) then  ! adjust boundary values for regional_MPAS scalar transport
 
+         MPAS_ACC_TIMER_START('atm_srk3: halo_exchanges + ACC_data_xfer')
          call mpas_pool_get_array(state, 'scalars', scalars_2, 2)
          !$acc update self(scalars_2)
          call exchange_halo_group(domain, 'dynamics:scalars')
          !$acc update device(scalars_2)
+         MPAS_ACC_TIMER_STOP('atm_srk3: halo_exchanges + ACC_data_xfer')
 
          allocate(scalars_driving(num_scalars,nVertLevels,nCells+1))
 
