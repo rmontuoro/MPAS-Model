@@ -6,17 +6,29 @@
 ! distributed with this code, or at http://mpas-dev.github.com/license.html
 !
 !=================================================================================================================
+
+#ifdef MPAS_OPENACC
+#define MPAS_ACC_TIMER_START(X) call mpas_timer_start(X)
+#define MPAS_ACC_TIMER_STOP(X) call mpas_timer_stop(X)
+#else
+#define MPAS_ACC_TIMER_START(X)
+#define MPAS_ACC_TIMER_STOP(X)
+#endif
+
  module mpas_atmphys_interface
  use mpas_kind_types
  use mpas_pool_routines
 
  use mpas_atmphys_constants
  use mpas_atmphys_vars
+ use mpas_timer, only: mpas_timer_start, mpas_timer_stop
 
  implicit none
  private
  public:: allocate_forall_physics,   &
           deallocate_forall_physics, &
+          pre_microphysics, &
+          post_microphysics, &
           MPAS_to_physics,           &
           microphysics_from_MPAS,    &
           microphysics_to_MPAS
@@ -545,6 +557,42 @@
  enddo
 
  end subroutine MPAS_to_physics
+
+!=================================================================================================================
+ subroutine pre_microphysics(configs,state,diag,time_lev)
+!=================================================================================================================
+
+!input variables:
+ type(mpas_pool_type),intent(in):: configs
+ type(mpas_pool_type),intent(in):: state
+ type(mpas_pool_type),intent(in):: diag
+
+ integer:: time_lev
+
+#ifdef MPAS_OPENACC
+!local pointers:
+ real(kind=RKIND),dimension(:,:),pointer  :: exner,pressure_b,w
+ real(kind=RKIND),dimension(:,:),pointer  :: rho_zz,theta_m,pressure_p
+ real(kind=RKIND),dimension(:,:,:),pointer:: scalars
+
+
+ MPAS_ACC_TIMER_START('pre_microphysics [ACC_data_xfer]')
+ call mpas_pool_get_array(diag,'exner'        ,exner     )
+ call mpas_pool_get_array(diag,'pressure_base',pressure_b)
+ call mpas_pool_get_array(diag,'pressure_p'   ,pressure_p)
+
+ call mpas_pool_get_array(state,'rho_zz' ,rho_zz ,time_lev)
+ call mpas_pool_get_array(state,'theta_m',theta_m,time_lev)
+ call mpas_pool_get_array(state,'w'      ,w      ,time_lev)
+ !$acc update host(exner, pressure_b, pressure_p, rho_zz, theta_m, w)
+
+ call mpas_pool_get_array(state,'scalars',scalars,time_lev)
+ !$acc update host(scalars)
+
+ MPAS_ACC_TIMER_STOP('pre_microphysics [ACC_data_xfer]')
+#endif
+
+end subroutine pre_microphysics
 
 !=================================================================================================================
  subroutine microphysics_from_MPAS(configs,mesh,state,time_lev,diag,diag_physics,tend_physics,its,ite)
@@ -1088,6 +1136,50 @@
  end select mp_tend_select
 
  end subroutine microphysics_to_MPAS
+
+!=================================================================================================================
+ subroutine post_microphysics(configs,state,diag,tend,time_lev)
+!=================================================================================================================
+
+!input variables:
+ type(mpas_pool_type),intent(in):: configs
+ type(mpas_pool_type),intent(in):: state
+ type(mpas_pool_type),intent(in):: diag
+ type(mpas_pool_type),intent(inout):: tend
+
+
+ integer:: time_lev
+
+#ifdef MPAS_OPENACC
+!local pointers:
+ real(kind=RKIND),dimension(:,:),pointer  :: exner,exner_b,pressure_b,rtheta_p,rtheta_b
+ real(kind=RKIND),dimension(:,:),pointer  :: rho_zz,theta_m,pressure_p
+ real(kind=RKIND),dimension(:,:,:),pointer:: scalars
+ real(kind=RKIND),dimension(:,:),pointer  :: rt_diabatic_tend
+
+ call mpas_pool_get_array(diag,'exner'        ,exner     )
+ call mpas_pool_get_array(diag,'exner_base'   ,exner_b   )
+ call mpas_pool_get_array(diag,'pressure_base',pressure_b)
+ call mpas_pool_get_array(diag,'pressure_p'   ,pressure_p)
+ call mpas_pool_get_array(diag,'rtheta_base'  ,rtheta_b  )
+ call mpas_pool_get_array(diag,'rtheta_p'     ,rtheta_p  )
+
+ call mpas_pool_get_array(state,'rho_zz' ,rho_zz ,time_lev)
+ call mpas_pool_get_array(state,'theta_m',theta_m,time_lev)
+
+ call mpas_pool_get_array(state,'scalars',scalars,time_lev)
+
+ call mpas_pool_get_array(tend,'rt_diabatic_tend',rt_diabatic_tend)
+
+
+ MPAS_ACC_TIMER_START('post_microphysics [ACC_data_xfer]')
+ !$acc update device(exner, exner_b, pressure_b, pressure_p, rtheta_b)
+ !$acc update device(rtheta_p, rho_zz, theta_m, scalars)
+ !$acc update device(rt_diabatic_tend)
+ MPAS_ACC_TIMER_STOP('post_microphysics [ACC_data_xfer]')
+#endif
+
+end subroutine post_microphysics
 
 !=================================================================================================================
  end module mpas_atmphys_interface
