@@ -1,3 +1,6 @@
 [submodule "src/core_atmosphere/physics/physics_mmm"]
 	path = src/core_atmosphere/physics/physics_mmm
 	url = https://github.com/NCAR/MMM-physics.git
+[submodule "src/core_atmosphere/physics/physics_noaa/UGWP"]
+	path = src/core_atmosphere/physics/physics_noaa/UGWP
+	url = https://github.com/NOAA-GSL/UGWP.git
