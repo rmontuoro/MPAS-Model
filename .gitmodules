@@ -4,3 +4,6 @@
 [submodule "src/core_atmosphere/physics/physics_noaa/UGWP"]
 	path = src/core_atmosphere/physics/physics_noaa/UGWP
 	url = https://github.com/NOAA-GSL/UGWP.git
+[submodule "data"]
+	path = data
+	url = https://github.com/MPAS-Dev/MPAS-Data
