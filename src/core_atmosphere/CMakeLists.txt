@@ -1,3 +1,5 @@
+option(FETCH_EXTERNALS "Retrieve external dependencies." OFF)
+option(FETCH_DATA      "Retrieve external data files."   OFF)
 
 ## Source files
 # physics/
@@ -96,18 +98,19 @@ set(ATMOSPHERE_CORE_PHYSICS_WRF_SOURCES
 
 list(TRANSFORM ATMOSPHERE_CORE_PHYSICS_WRF_SOURCES PREPEND physics/physics_wrf/)
 
-
-set(CHECKOUT ${CMAKE_CURRENT_SOURCE_DIR}/tools/manage_externals/checkout_externals )
-execute_process( COMMAND
-                 ${CHECKOUT} --externals ${CMAKE_CURRENT_SOURCE_DIR}/Externals.cfg
-                 WORKING_DIRECTORY       ${CMAKE_CURRENT_SOURCE_DIR}/physics/
-                 RESULT_VARIABLE         MANAGE_EXTERNALS_STATUS
-                )
-if ( ${MANAGE_EXTERNALS_STATUS} AND NOT ${MANAGE_EXTERNALS_STATUS} EQUAL 0 )
-    message( FATAL_ERROR "Failed to checkout external repos via manage_externals" )
-else()
-    message( STATUS "Finished checking out external repos via manage_externals" )
-endif()
+if (FETCH_EXTERNALS)
+    set(CHECKOUT ${CMAKE_CURRENT_SOURCE_DIR}/tools/manage_externals/checkout_externals )
+    execute_process( COMMAND
+                     ${CHECKOUT} --externals ${CMAKE_CURRENT_SOURCE_DIR}/Externals.cfg
+                     WORKING_DIRECTORY       ${CMAKE_CURRENT_SOURCE_DIR}/physics/
+                     RESULT_VARIABLE         MANAGE_EXTERNALS_STATUS
+                    )
+    if ( ${MANAGE_EXTERNALS_STATUS} AND NOT ${MANAGE_EXTERNALS_STATUS} EQUAL 0 )
+        message( FATAL_ERROR "Failed to checkout external repos via manage_externals" )
+    else()
+        message( STATUS "Finished checking out external repos via manage_externals" )
+    endif()
+endif ()
 
 set(ATMOSPHERE_CORE_PHYSICS_MMM_SOURCES
     bl_gwdo.F90
@@ -369,29 +372,31 @@ target_compile_definitions(core_atmosphere PRIVATE ${CORE_ATMOSPHERE_COMPILE_DEF
 set_MPAS_DEBUG_flag(core_atmosphere)
 mpas_core_target(CORE atmosphere TARGET core_atmosphere INCLUDES ${ATMOSPHERE_CORE_INCLUDES})
 
-#Get physics_wrf tables from MPAS-Data
-include(FetchContent)
-if (${PROJECT_VERSION} VERSION_GREATER_EQUAL 7.0)
-    set(MPAS_DATA_GIT_TAG v${PROJECT_VERSION_MAJOR}.0)
-else ()
-    set(MPAS_DATA_GIT_TAG master)
-endif ()
+if (FETCH_DATA)
+    #Get physics_wrf tables from MPAS-Data
+    include(FetchContent)
+    if (${PROJECT_VERSION} VERSION_GREATER_EQUAL 7.0)
+        set(MPAS_DATA_GIT_TAG v${PROJECT_VERSION_MAJOR}.0)
+    else ()
+        set(MPAS_DATA_GIT_TAG master)
+    endif ()
 
-FetchContent_Declare(mpas_data
-                     GIT_REPOSITORY https://github.com/MPAS-Dev/MPAS-Data.git
-                     GIT_TAG ${MPAS_DATA_GIT_TAG}
-                     GIT_PROGRESS True
-                     GIT_SHALLOW True)
-FetchContent_Populate(mpas_data)
-message(STATUS "MPAS-Data source dir: ${mpas_data_SOURCE_DIR}")
-set(PHYSICS_WRF_DATA_DIR ${mpas_data_SOURCE_DIR}/atmosphere/physics_wrf/files)
-file(GLOB PHYSICS_WRF_DATA RELATIVE ${PHYSICS_WRF_DATA_DIR} "${PHYSICS_WRF_DATA_DIR}/*")
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/core_atmosphere)
-foreach (data_file IN LISTS PHYSICS_WRF_DATA)
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${PHYSICS_WRF_DATA_DIR}/${data_file}
-                    ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/core_atmosphere/${data_file})
-endforeach ()
-install(DIRECTORY ${PHYSICS_WRF_DATA_DIR}/ DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/core_atmosphere)
+    FetchContent_Declare(mpas_data
+                         GIT_REPOSITORY https://github.com/MPAS-Dev/MPAS-Data.git
+                         GIT_TAG ${MPAS_DATA_GIT_TAG}
+                         GIT_PROGRESS True
+                         GIT_SHALLOW True)
+    FetchContent_Populate(mpas_data)
+    message(STATUS "MPAS-Data source dir: ${mpas_data_SOURCE_DIR}")
+    set(PHYSICS_WRF_DATA_DIR ${mpas_data_SOURCE_DIR}/atmosphere/physics_wrf/files)
+    file(GLOB PHYSICS_WRF_DATA RELATIVE ${PHYSICS_WRF_DATA_DIR} "${PHYSICS_WRF_DATA_DIR}/*")
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/core_atmosphere)
+    foreach (data_file IN LISTS PHYSICS_WRF_DATA)
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${PHYSICS_WRF_DATA_DIR}/${data_file}
+                        ${CMAKE_BINARY_DIR}/${PROJECT_NAME}/core_atmosphere/${data_file})
+    endforeach ()
+    install(DIRECTORY ${PHYSICS_WRF_DATA_DIR}/ DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/core_atmosphere)
+endif ()
 
 add_executable(mpas_atmosphere_build_tables ${ATMOSPHERE_CORE_UTILS_SOURCES})
 target_link_libraries(mpas_atmosphere_build_tables PUBLIC core_atmosphere)
