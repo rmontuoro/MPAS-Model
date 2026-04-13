@@ -108,7 +108,7 @@ endif()
 if(ESMF_FOUND)
   message(STATUS "Configure MPAS for external ESMF")
   add_definitions(-DMPAS_EXTERNAL_ESMF_LIB -DMPAS_NO_ESMF_INIT)
-  add_library(${PROJECT_NAME}::external::esmf ALIAS esmf)
+  add_library(${PROJECT_NAME}::external::esmf ALIAS ESMF::ESMF)
 else()
   message(STATUS "Configure MPAS for internal ESMF")
   add_subdirectory(src/external/esmf_time_f90) # Target: MPAS::external::esmf_time
