@@ -121,7 +121,7 @@ function(mpas_fortran_target target)
         list(APPEND MPAS_FORTRAN_TARGET_COMPILE_OPTIONS_PUBLIC
                 $<$<COMPILE_LANGUAGE:Fortran>:-align array64byte>
                 $<$<COMPILE_LANGUAGE:Fortran>:-convert big_endian>
-                $<$<COMPILE_LANGUAGE:Fortran>:-Qoption,fpp,-macro_expand=vc>
+                $<$<COMPILE_LANGUAGE:Fortran>:-Qoption,fpp,-macro_expand=cpp>
         )
         if(MPAS_DOUBLE_PRECISION)
             list(APPEND MPAS_FORTRAN_TARGET_COMPILE_OPTIONS_PRIVATE
